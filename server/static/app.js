@@ -1,4 +1,4 @@
-﻿// ==================== Tab 切换 ====================
+// ==================== Tab 切换 ====================
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -107,79 +107,150 @@ function drawResultChart(results) {
 }
 
 // ==================== Tab 2: 数据集 ====================
+let datasetsCache = [];
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]
+  ));
+}
+
 async function refreshDatasets() {
   const res = await fetch('/api/datasets');
   const data = await res.json();
+  datasetsCache = data.datasets || [];
+
+  const dsSel = document.getElementById('datasetSelect');
+  const prevDataset = dsSel.value;
+  dsSel.innerHTML = '';
+  datasetsCache.forEach(ds => {
+    const opt = document.createElement('option');
+    opt.value = ds.name;
+    opt.textContent = `${ds.name} (${ds.count}张)`;
+    dsSel.appendChild(opt);
+  });
+  if (prevDataset && [...dsSel.options].some(o => o.value === prevDataset)) {
+    dsSel.value = prevDataset;
+  }
+  refreshCategories();
+}
+
+function refreshCategories() {
+  const dsName = document.getElementById('datasetSelect').value;
+  const ds = datasetsCache.find(d => d.name === dsName);
   const sel = document.getElementById('categorySelect');
   sel.innerHTML = '<option value="">-- 选择类别 --</option>';
-  data.datasets.forEach(cat => {
-    sel.innerHTML += `<option value="${cat.name}">${cat.name} (${cat.count})</option>`;
+  if (!ds) { showImages(); return; }
+
+  ds.classes.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    opt.textContent = `${c.name} (${c.count}张)`;
+    sel.appendChild(opt);
   });
-  showImages(data.datasets);
+  if (ds.root_images && ds.root_images.length) {
+    const opt = document.createElement('option');
+    opt.value = '__ROOT__';
+    opt.textContent = `根目录图片 (${ds.root_images.length}张)`;
+    sel.appendChild(opt);
+  }
+  showImages();
 }
 
-document.getElementById('categorySelect').addEventListener('change', async function() {
-  if (!this.value) { document.getElementById('imageGrid').innerHTML = '请先选择一个类别'; return; }
-  const res = await fetch('/api/datasets');
-  const data = await res.json();
-  showImages(data.datasets, this.value);
-});
+document.getElementById('datasetSelect').addEventListener('change', refreshCategories);
+document.getElementById('categorySelect').addEventListener('change', showImages);
 
-function showImages(datasets, filterCategory) {
+function currentDataset() {
+  const name = document.getElementById('datasetSelect').value;
+  return datasetsCache.find(d => d.name === name) || null;
+}
+
+function currentImages() {
+  const ds = currentDataset();
+  const cat = document.getElementById('categorySelect').value;
+  if (!ds) return [];
+  if (cat === '__ROOT__') return ds.root_images.map(n => ({ name: n, cat: '' }));
+  const cls = ds.classes.find(c => c.name === cat);
+  return cls ? cls.images.map(n => ({ name: n, cat: cls.name })) : [];
+}
+
+function showImages() {
   const grid = document.getElementById('imageGrid');
-  if (!datasets.length) { grid.innerHTML = '<p style="color:#666">暂无数据，请创建类别并上传图片</p>'; return; }
+  const ds = currentDataset();
+  if (!ds) { grid.innerHTML = '<p style="color:#666">暂无数据集，请先创建数据集目录并上传图片</p>'; return; }
 
-  let html = '';
-  datasets.forEach(cat => {
-    if (filterCategory && cat.name !== filterCategory) return;
-    cat.images.forEach(img => {
-      html += `<div class="grid-item">
-        <img src="/datasets/${cat.name}/${img}" alt="${img}" onclick="deleteImage('${cat.name}','${img}')">
-        <button class="del-btn" onclick="event.stopPropagation();deleteImage('${cat.name}','${img}')">✕</button>
-      </div>`;
-    });
-  });
-  grid.innerHTML = html || '<p style="color:#666">该类别暂无图片</p>';
+  const items = currentImages();
+  if (!items.length) { grid.innerHTML = '<p style="color:#666">该类别暂无图片</p>'; return; }
+
+  grid.innerHTML = items.map(it => {
+    const relPath = it.cat ? `${ds.name}/${it.cat}/${it.name}` : `${ds.name}/${it.name}`;
+    const urlPath = relPath.split('/').map(encodeURIComponent).join('/');
+    return `<div class="grid-item" data-dataset="${escapeHtml(ds.name)}" data-category="${escapeHtml(it.cat)}" data-file="${escapeHtml(it.name)}">
+      <img src="/datasets/${urlPath}" alt="${escapeHtml(it.name)}" loading="lazy">
+      <button class="del-btn">✕</button>
+    </div>`;
+  }).join('');
 }
 
-async function deleteImage(cat, img) {
-  if (!confirm(`删除 ${cat}/${img}?`)) return;
+document.getElementById('imageGrid').addEventListener('click', async e => {
+  const btn = e.target.closest('.del-btn');
+  if (!btn) return;
+  const item = btn.closest('.grid-item');
+  const dsName = item.dataset.dataset;
+  const cat = item.dataset.category;
+  const file = item.dataset.file;
+  if (!confirm(`删除 ${dsName}/${cat ? cat + '/' : ''}${file}?`)) return;
+
   const form = new FormData();
-  form.append('category', cat);
-  form.append('filename', img);
+  form.append('dataset', dsName);
+  form.append('category', cat || '');
+  form.append('filename', file);
   await fetch('/api/datasets/image', { method: 'DELETE', body: form });
   refreshDatasets();
-}
+});
 
 document.getElementById('btnCreateCategory').addEventListener('click', async () => {
+  const dsName = document.getElementById('datasetSelect').value;
   const name = document.getElementById('newCategory').value.trim();
+  if (!dsName) { alert('请先创建/选择数据集'); return; }
   if (!name) return;
+
   const form = new FormData();
+  form.append('dataset', dsName);
   form.append('category', name);
   await fetch('/api/datasets/category', { method: 'POST', body: form });
   document.getElementById('newCategory').value = '';
-  document.getElementById('datasetMsg').textContent = '✓ 类别已创建';
+  document.getElementById('datasetMsg').textContent = `✓ 已创建 ${dsName}/${name}`;
   refreshDatasets();
 });
 
 document.getElementById('btnUploadTrigger').addEventListener('click', () => {
+  const dsName = document.getElementById('datasetSelect').value;
+  if (!dsName) { alert('请先选择数据集'); return; }
   document.getElementById('datasetFileInput').click();
 });
 
 document.getElementById('datasetFileInput').addEventListener('change', async function() {
-  const sel = document.getElementById('categorySelect');
-  if (!sel.value) { alert('请先选择类别'); return; }
+  const dsName = document.getElementById('datasetSelect').value;
+  const cat = document.getElementById('categorySelect').value;
+  if (!dsName) { alert('请先选择数据集'); return; }
+  if (!cat) { alert('请先选择类别'); return; }
+
+  const catName = cat === '__ROOT__' ? '' : cat;
   const msg = document.getElementById('datasetMsg');
+  let ok = 0;
   for (const file of this.files) {
     const form = new FormData();
     form.append('file', file);
-    form.append('category', sel.value);
+    form.append('dataset', dsName);
+    form.append('category', catName);
     await fetch('/api/datasets/upload', { method: 'POST', body: form });
+    ok++;
   }
-  msg.textContent = `✓ 已上传 ${this.files.length} 张图片`;
+  msg.textContent = `✓ 已上传 ${ok} 张图片到 ${dsName}/${cat}`;
+  this.value = '';
   refreshDatasets();
 });
-
 // ==================== Tab 3: 训练中心 ====================
 let lossChart = null, accChart = null;
 let pollTimer = null;
@@ -188,9 +259,8 @@ async function refreshTrainDatasetList() {
   const res = await fetch('/api/datasets');
   const data = await res.json();
   const sel = document.getElementById('trainDataset');
-  sel.innerHTML = data.datasets.map(c => `<option value="${c.name}">${c.name} (${c.count}张)</option>`).join('');
+  sel.innerHTML = (data.datasets || []).map(c => `<option value="${c.name}">${c.name} (${c.count}张)</option>`).join('');
 }
-
 document.getElementById('btnStartTrain').addEventListener('click', async () => {
   const ds = document.getElementById('trainDataset').value;
   if (!ds) { alert('请选择数据集'); return; }

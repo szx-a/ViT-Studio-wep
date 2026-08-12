@@ -1,4 +1,4 @@
-﻿# dataset.py - 自定义数据集
+# dataset.py - 自定义数据集
 """按子文件夹组织的图像分类数据集。
 
 目录结构:
@@ -37,15 +37,13 @@ class ImageFolderDataset(Dataset):
 
         self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
 
-        # 收集所有图像路径
+        # 收集所有图像路径（Windows 下 glob 大小写不敏感，统一用 iterdir 避免重复）
         self.samples: list[tuple[Path, int]] = []
+        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
         for cls_name in self.classes:
             cls_dir = self.root / cls_name
-            for ext in ("*.jpg", "*.jpeg", "*.png", "*.bmp", "*.webp"):
-                for img_path in cls_dir.glob(ext):
-                    self.samples.append((img_path, self.class_to_idx[cls_name]))
-                # 大小写不敏感
-                for img_path in cls_dir.glob(ext.upper()):
+            for img_path in cls_dir.iterdir():
+                if img_path.is_file() and img_path.suffix.lower() in image_exts:
                     self.samples.append((img_path, self.class_to_idx[cls_name]))
 
         print(f"[数据集] 类别数={len(self.classes)}, 样本数={len(self.samples)}")

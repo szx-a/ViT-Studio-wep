@@ -29,3 +29,5 @@ LABELS_DIR = BASE_DIR / "labels"
 LABEL_FILE = LABELS_DIR / "imagenet_label.txt"      # ImageNet-1K 类别名
 CHECKPOINT_DIR = BASE_DIR / "checkpoints"
 CHECKPOINT_DIR.mkdir(exist_ok=True)
+
+BILINGUAL_LABEL_FILE = LABELS_DIR / "imagenet_label_bilingual.txt"   # 中英双语标签

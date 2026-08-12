@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -53,23 +53,27 @@
   <div class="card">
     <h2>数据集管理</h2>
     <div class="row">
+      <label>数据集
+        <select id="datasetSelect" style="margin-left:4px;padding:6px;min-width:140px"></select>
+      </label>
       <input type="text" id="newCategory" placeholder="新类别名">
       <button id="btnCreateCategory" class="btn-primary">➕ 创建类别</button>
       <input type="file" id="datasetFileInput" accept="image/*" multiple hidden>
       <button id="btnUploadTrigger" class="btn-secondary">📤 上传图片</button>
     </div>
-    <select id="categorySelect" style="margin-top:12px;padding:6px;width:200px">
-      <option value="">-- 选择类别 --</option>
-    </select>
-    <span id="datasetMsg" style="margin-left:12px;color:#4caf50"></span>
+    <div class="row" style="margin-top:12px">
+      <label>类别
+        <select id="categorySelect" style="margin-left:4px;padding:6px;min-width:180px"></select>
+      </label>
+      <span id="datasetMsg" style="margin-left:12px;color:#4caf50"></span>
+    </div>
   </div>
 
   <div class="card">
     <h2>图片列表</h2>
-    <div id="imageGrid" class="image-grid">请先选择一个类别</div>
+    <div id="imageGrid" class="image-grid">请先选择数据集和类别</div>
   </div>
 </section>
-
 <!-- ==================== Tab 3: 训练中心 ==================== -->
 <section id="tab-train" class="tab-content">
   <div class="card">

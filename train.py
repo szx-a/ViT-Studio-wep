@@ -1,14 +1,17 @@
-﻿# train.py - 微调训练脚本（支持 fp16 混合精度）
-"""在自定义数据集上微调 ViT 模型。
+# train.py - 微调训练脚本（支持 fp16 混合精度）
+"""在自定义数据集上微调 ViT 模型（两级目录：数据集/类别/图片）。
 
 用法:
-    python train.py --data_dir ./my_data --epochs 10 --lr 1e-4 --batch_size 32
+    python train.py --data_dir ./datasets/eurosat --epochs 10 --lr 1e-4 --batch_size 32
 
-目录结构:
-    my_data/
-      ├── cat/    (cat001.jpg, ...)
-      ├── dog/    (dog001.jpg, ...)
-      ...
+目录结构（两级）:
+    datasets/
+      └── eurosat/                  <- data_dir，数据集目录
+            ├── AnnualCrop/         <- 类别 1（子文件夹名即类别）
+            ├── Forest/             <- 类别 2
+            └── SeaLake/            <- 类别 10
+
+    Web 训练中心对应: 数据集=eurosat -> data_dir=datasets/eurosat
 
 默认启用 fp16 混合精度（GPU），可通过 --no_amp 关闭。
 """
@@ -30,7 +33,7 @@ from dataset import ImageFolderDataset
 def parse_args():
     parser = argparse.ArgumentParser(description="ViT 微调训练")
     parser.add_argument("--data_dir", type=str, required=True,
-                        help="训练数据根目录（子文件夹=类别）")
+                        help="数据集目录（两级结构，其下子文件夹=类别）")
     parser.add_argument("--epochs", type=int, default=config.DEFAULT_EPOCHS,
                         help=f"训练轮数（默认 {config.DEFAULT_EPOCHS}）")
     parser.add_argument("--batch_size", type=int, default=config.DEFAULT_BATCH_SIZE,

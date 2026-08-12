@@ -10,18 +10,13 @@ import config
 
 
 # ---------------------------------------------------------------------------
-# 标签
+# 标签（单语）
 # ---------------------------------------------------------------------------
 _labels_cache: dict[int, str] | None = None
 
 
 def load_labels() -> dict[int, str]:
-    """加载标签文件，返回 {class_id: class_name} 映射。
-
-    支持两种格式：
-      1) 每行 "class_id<TAB>class_name"
-      2) JSON {"0": "name0", "1": "name1", ...}
-    """
+    """加载英文标签，返回 {class_id: class_name}。"""
     global _labels_cache
     if _labels_cache is not None:
         return _labels_cache
@@ -33,26 +28,63 @@ def load_labels() -> dict[int, str]:
         return _labels_cache
 
     text = label_file.read_text(encoding="utf-8").strip()
-
-    # 尝试 JSON 格式
     if text.startswith("{"):
         raw = json.loads(text)
         _labels_cache = {int(k): v for k, v in raw.items()}
     else:
-        # TAB / 空格分隔
         _labels_cache = {}
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = line.split(None, 1)          # 按任意空白拆分，最多两部分
+            parts = line.split(None, 1)
             if len(parts) == 2:
                 try:
                     _labels_cache[int(parts[0])] = parts[1]
                 except ValueError:
                     pass
-
     return _labels_cache
+
+
+# ---------------------------------------------------------------------------
+# 双语标签
+# ---------------------------------------------------------------------------
+_bilingual_cache: dict[int, dict] | None = None
+
+
+def load_bilingual_labels() -> dict[int, dict]:
+    """加载双语标签，返回 {class_id: {en: str, zh: str}}。"""
+    global _bilingual_cache
+    if _bilingual_cache is not None:
+        return _bilingual_cache
+
+    bilingual_file = config.BILINGUAL_LABEL_FILE
+    if not bilingual_file.exists():
+        # fallback 到单语标签
+        en_map = load_labels()
+        _bilingual_cache = {k: {"en": v, "zh": v} for k, v in en_map.items()}
+        return _bilingual_cache
+
+    _bilingual_cache = {}
+    for line in bilingual_file.read_text(encoding="utf-8").strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            try:
+                idx = int(parts[0])
+                _bilingual_cache[idx] = {"en": parts[1], "zh": parts[2]}
+            except ValueError:
+                pass
+        elif len(parts) == 2:
+            try:
+                idx = int(parts[0])
+                _bilingual_cache[idx] = {"en": parts[1], "zh": parts[1]}
+            except ValueError:
+                pass
+
+    return _bilingual_cache
 
 
 # ---------------------------------------------------------------------------

@@ -57,7 +57,7 @@ def load_model(pretrained: bool = None) -> torch.nn.Module:
 def predict(image: Image.Image, top_k: int = None) -> list[dict]:
     """对一张 PIL 图像做推理，返回 Top-K 预测列表。
 
-    返回格式: [{"class_id": int, "class_name": str, "confidence": float}, ...]
+    返回格式: [{"class_id": int, "class_name": str, "class_name_zh": str, "confidence": float}, ...]
     """
     if top_k is None:
         top_k = config.DEFAULT_TOP_K
@@ -65,28 +65,24 @@ def predict(image: Image.Image, top_k: int = None) -> list[dict]:
     model = load_model()
     transform = get_transform()
 
-    # 预处理 & 增加 batch 维度
     tensor = transform(image).unsqueeze(0).to(config.DEVICE)
 
-    # 推理
-    logits = model(tensor)            # (1, num_classes)
+    logits = model(tensor)
     probs = torch.softmax(logits, dim=-1).squeeze(0)
 
-    # 取 Top-K
     values, indices = torch.topk(probs, k=min(top_k, config.NUM_CLASSES))
 
-    # 加载标签映射
-    from utils import load_labels
-    label_map = load_labels()
+    from utils import load_bilingual_labels
+    label_map = load_bilingual_labels()
 
     results = []
     for i, (idx, conf) in enumerate(zip(indices.tolist(), values.tolist()), start=1):
-        class_id = idx
-        class_name = label_map.get(idx, f"class_{idx}")
+        info = label_map.get(idx, {"en": f"class_{idx}", "zh": f"类别_{idx}"})
         results.append({
             "rank": i,
-            "class_id": class_id,
-            "class_name": class_name,
+            "class_id": idx,
+            "class_name": info["en"],
+            "class_name_zh": info["zh"],
             "confidence": round(conf, 6),
         })
 
