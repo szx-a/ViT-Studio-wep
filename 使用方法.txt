@@ -1,6 +1,0 @@
-单张推理：
-& "D:\PythonProject  cv\.venv\Scripts\python.exe" "D:\PythonProject  cv\vit\vit_src\inference.py" "猫.jpg" --top-k 5
-
-训练
-
-& "D:\PythonProject  cv\.venv\Scripts\python.exe" "D:\PythonProject  cv\vit\vit_src\train.py" --data_dir ./my_data --epochs 10
