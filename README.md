@@ -106,7 +106,7 @@ vit_src/
 | POST | `/api/models/discard` | 丢弃待处理训练模型 |
 | POST | `/api/models/evaluate` | 模型评分 |
 
-### 前端三模块
+### 前端四模块
 
 | Tab | 功能 | 技术细节 |
 |-----|------|---------|
