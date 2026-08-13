@@ -1,4 +1,4 @@
-﻿# server/routes/train.py - 训练 API（后台线程 + 实时进度）
+# server/routes/train.py - 训练 API（后台线程 + 实时进度）
 
 import sys
 import threading
@@ -36,6 +36,7 @@ training_state: dict = {
     "num_classes": 0,
     "classes": [],
     "history": [],
+    "pending_model": None,
 }
 _lock = threading.Lock()
 
@@ -54,6 +55,7 @@ def _run_training(data_dir: str, epochs: int, batch_size: int,
         training_state["message"] = "正在加载数据..."
         training_state["history"] = []
         training_state["best_acc"] = 0.0
+        training_state["pending_model"] = None
 
     try:
         device = config.DEVICE
@@ -165,12 +167,13 @@ def _run_training(data_dir: str, epochs: int, batch_size: int,
             val_acc = v_correct / v_total if v_total else 0
 
             if val_acc > training_state["best_acc"]:
-                save_path = config.CHECKPOINT_DIR / "best_web.pth"
+                save_path = config.TEMP_CHECKPOINT
                 torch.save({
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
                     "classes": full_dataset.classes,
                     "val_acc": val_acc,
+                    "dataset": Path(data_dir).name,
                 }, save_path)
 
             history_entry = {
@@ -195,6 +198,16 @@ def _run_training(data_dir: str, epochs: int, batch_size: int,
         with _lock:
             if not training_state["stop_requested"]:
                 training_state["message"] = f"训练完成！最佳准确率: {training_state['best_acc']:.4f}"
+                if config.TEMP_CHECKPOINT.exists():
+                    training_state["pending_model"] = {
+                        "key": "_last_train",
+                        "path": str(config.TEMP_CHECKPOINT),
+                        "classes": full_dataset.classes,
+                        "num_classes": num_classes,
+                        "dataset": Path(data_dir).name,
+                        "val_acc": training_state["best_acc"],
+                        "size_mb": round(config.TEMP_CHECKPOINT.stat().st_size / 1024 / 1024, 2),
+                    }
 
     except Exception as e:
         with _lock:

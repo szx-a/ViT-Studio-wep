@@ -1,5 +1,5 @@
 # dataset.py - 自定义数据集
-"""按子文件夹组织的图像分类数据集。
+"""按子文件夹组织的图像分类数据集（两级目录：数据集/类别/图片）。
 
 目录结构:
     data/
@@ -10,7 +10,8 @@
       │     └── dog001.jpg
       ...
 
-子文件夹名 → 类别标签（按字母排序）"""
+子文件夹名 -> 类别标签（按字母排序）；空类别文件夹会被自动忽略。
+"""
 
 from pathlib import Path
 from PIL import Image
@@ -28,23 +29,24 @@ class ImageFolderDataset(Dataset):
         if not self.root.exists():
             raise FileNotFoundError(f"数据目录不存在: {self.root}")
 
-        # 收集所有类别（子文件夹）
-        self.classes = sorted(
-            d.name for d in self.root.iterdir() if d.is_dir()
-        )
+        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+        self.classes = []
+        self.class_to_idx = {}
+        self.samples: list[tuple[Path, int]] = []
+
+        for cls_dir in sorted(d for d in self.root.iterdir() if d.is_dir()):
+            images = [p for p in cls_dir.iterdir()
+                      if p.is_file() and p.suffix.lower() in image_exts]
+            if not images:
+                continue
+            idx = len(self.classes)
+            self.classes.append(cls_dir.name)
+            self.class_to_idx[cls_dir.name] = idx
+            for img_path in images:
+                self.samples.append((img_path, idx))
+
         if not self.classes:
             raise ValueError(f"数据目录下未找到类别子文件夹: {self.root}")
-
-        self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
-
-        # 收集所有图像路径（Windows 下 glob 大小写不敏感，统一用 iterdir 避免重复）
-        self.samples: list[tuple[Path, int]] = []
-        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-        for cls_name in self.classes:
-            cls_dir = self.root / cls_name
-            for img_path in cls_dir.iterdir():
-                if img_path.is_file() and img_path.suffix.lower() in image_exts:
-                    self.samples.append((img_path, self.class_to_idx[cls_name]))
 
         print(f"[数据集] 类别数={len(self.classes)}, 样本数={len(self.samples)}")
 

@@ -31,3 +31,27 @@ CHECKPOINT_DIR = BASE_DIR / "checkpoints"
 CHECKPOINT_DIR.mkdir(exist_ok=True)
 
 BILINGUAL_LABEL_FILE = LABELS_DIR / "imagenet_label_bilingual.txt"   # 中英双语标签
+
+
+# ---- 模型管理与评分 ----
+BUILTIN_MODEL_KEY = "imagenet"                  # 内置通用模型 key
+BUILTIN_MODEL_NAME = "ImageNet-1K 通用识别"      # 内置模型显示名
+BUILTIN_MODEL_SIZE_MB = 344                       # ViT-B/16 约 86M 参数 * 4 字节
+TEMP_CHECKPOINT = CHECKPOINT_DIR / "_last_train.pth"   # 训练刚完成的待处理模型
+MODEL_META_FILE = CHECKPOINT_DIR / "models_meta.json"  # 微调模型元数据
+EVAL_VAL_SPLIT = 0.2                             # 评分时验证集比例
+EVAL_SEED = 42
+
+# 微调类别中文名（缺失时回退为英文类别名）
+FINETUNED_LABELS_ZH = {
+    "AnnualCrop": "农田",
+    "Forest": "森林",
+    "HerbaceousVegetation": "草地植被",
+    "Highway": "公路",
+    "Industrial": "工业区",
+    "Pasture": "牧场",
+    "PermanentCrop": "永久作物",
+    "Residential": "住宅区",
+    "River": "河流",
+    "SeaLake": "海洋湖泊",
+}

@@ -7,11 +7,19 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'dataset') refreshDatasets();
     if (btn.dataset.tab === 'train') refreshTrainDatasetList();
+    if (btn.dataset.tab === 'models') { refreshModels(); refreshEvalOptions(); }
   });
 });
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]
+  ));
+}
+
 // ==================== Tab 1: 图片识别 ====================
 let selectedFile = null;
+let resultChart = null;
 const zone = document.getElementById('uploadZone');
 const fileInput = document.getElementById('fileInput');
 const previewBox = document.getElementById('previewBox');
@@ -21,7 +29,32 @@ const resultCard = document.getElementById('resultCard');
 const resultList = document.getElementById('resultList');
 const topK = document.getElementById('topK');
 const predictProgress = document.getElementById('predictProgress');
-let resultChart = null;
+const modelMode = document.getElementById('modelMode');
+const customModelWrap = document.getElementById('customModelWrap');
+const customModelSelect = document.getElementById('customModelSelect');
+
+async function refreshCustomModels() {
+  if (modelMode.value !== 'custom') return;
+  try {
+    const res = await fetch('/api/models/finetuned');
+    const data = await res.json();
+    customModelSelect.innerHTML = (data.models || []).map(k => `<option value="${k}">${k}</option>`).join('');
+    if (!data.models || !data.models.length) {
+      customModelSelect.innerHTML = '<option value="">-- 暂无微调模型 --</option>';
+    }
+  } catch (e) {
+    customModelSelect.innerHTML = '<option value="">-- 加载失败 --</option>';
+  }
+}
+
+function currentModelKey() {
+  return modelMode.value === 'custom' ? customModelSelect.value : 'imagenet';
+}
+
+modelMode.addEventListener('change', () => {
+  customModelWrap.classList.toggle('hidden', modelMode.value !== 'custom');
+  refreshCustomModels();
+});
 
 zone.addEventListener('click', () => fileInput.click());
 zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
@@ -46,6 +79,9 @@ function handleFile(file) {
 
 btnPredict.addEventListener('click', async () => {
   if (!selectedFile) return;
+  const modelKey = currentModelKey();
+  if (!modelKey) { alert('请选择微调模型'); return; }
+
   btnPredict.disabled = true;
   btnPredict.textContent = '⏳ 识别中...';
   predictProgress.classList.remove('hidden');
@@ -53,6 +89,7 @@ btnPredict.addEventListener('click', async () => {
   const form = new FormData();
   form.append('file', selectedFile);
   form.append('top_k', topK.value || '5');
+  form.append('model_key', modelKey);
 
   try {
     const res = await fetch('/api/predict', { method: 'POST', body: form });
@@ -62,8 +99,8 @@ btnPredict.addEventListener('click', async () => {
       `<div class="result-item">
         <span class="result-rank">#${r.rank}</span>
         <span class="result-name">
-          <strong>${r.class_name_zh}</strong>
-          <small style="color:#888;margin-left:6px">${r.class_name}</small>
+          <strong>${escapeHtml(r.class_name_zh)}</strong>
+          <small style="color:#888;margin-left:6px">${escapeHtml(r.class_name)}</small>
         </span>
         <span class="result-conf">${(r.confidence*100).toFixed(1)}%</span>
       </div>`
@@ -72,7 +109,7 @@ btnPredict.addEventListener('click', async () => {
     drawResultChart(data.results);
     resultCard.classList.remove('hidden');
   } catch (e) {
-    resultList.innerHTML = '<p style="color:#e74c3c">识别失败: ' + e.message + '</p>';
+    resultList.innerHTML = '<p style="color:#e74c3c">识别失败: ' + escapeHtml(e.message) + '</p>';
   }
   btnPredict.disabled = false;
   btnPredict.textContent = '🔍 识别';
@@ -89,8 +126,7 @@ function drawResultChart(results) {
       datasets: [{
         label: '置信度',
         data: results.map(r => r.confidence * 100),
-        backgroundColor: results.map((_, i) =>
-          `hsla(${240 - i*30}, 70%, 65%, 0.7)`),
+        backgroundColor: results.map((_, i) => `hsla(${240 - i*30}, 70%, 65%, 0.7)`),
         borderRadius: 6,
       }]
     },
@@ -108,12 +144,6 @@ function drawResultChart(results) {
 
 // ==================== Tab 2: 数据集 ====================
 let datasetsCache = [];
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, ch => (
-    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]
-  ));
-}
 
 async function refreshDatasets() {
   const res = await fetch('/api/datasets');
@@ -165,28 +195,25 @@ function currentDataset() {
   return datasetsCache.find(d => d.name === name) || null;
 }
 
-function currentImages() {
-  const ds = currentDataset();
-  const cat = document.getElementById('categorySelect').value;
-  if (!ds) return [];
-  if (cat === '__ROOT__') return ds.root_images.map(n => ({ name: n, cat: '' }));
-  const cls = ds.classes.find(c => c.name === cat);
-  return cls ? cls.images.map(n => ({ name: n, cat: cls.name })) : [];
-}
-
-function showImages() {
+async function showImages() {
   const grid = document.getElementById('imageGrid');
   const ds = currentDataset();
   if (!ds) { grid.innerHTML = '<p style="color:#666">暂无数据集，请先创建数据集目录并上传图片</p>'; return; }
 
-  const items = currentImages();
-  if (!items.length) { grid.innerHTML = '<p style="color:#666">该类别暂无图片</p>'; return; }
+  const cat = document.getElementById('categorySelect').value;
+  if (!cat) { grid.innerHTML = '<p style="color:#666">请先选择类别</p>'; return; }
+  const catName = cat === '__ROOT__' ? '' : cat;
 
-  grid.innerHTML = items.map(it => {
-    const relPath = it.cat ? `${ds.name}/${it.cat}/${it.name}` : `${ds.name}/${it.name}`;
+  const res = await fetch(`/api/datasets/images?dataset=${encodeURIComponent(ds.name)}&category=${encodeURIComponent(catName)}`);
+  const data = await res.json();
+  const images = data.images || [];
+  if (!images.length) { grid.innerHTML = '<p style="color:#666">该类别暂无图片</p>'; return; }
+
+  grid.innerHTML = images.map(name => {
+    const relPath = catName ? `${ds.name}/${catName}/${name}` : `${ds.name}/${name}`;
     const urlPath = relPath.split('/').map(encodeURIComponent).join('/');
-    return `<div class="grid-item" data-dataset="${escapeHtml(ds.name)}" data-category="${escapeHtml(it.cat)}" data-file="${escapeHtml(it.name)}">
-      <img src="/datasets/${urlPath}" alt="${escapeHtml(it.name)}" loading="lazy">
+    return `<div class="grid-item" data-dataset="${escapeHtml(ds.name)}" data-category="${escapeHtml(catName)}" data-file="${escapeHtml(name)}">
+      <img src="/datasets/${urlPath}" alt="${escapeHtml(name)}" loading="lazy">
       <button class="del-btn">✕</button>
     </div>`;
   }).join('');
@@ -251,9 +278,11 @@ document.getElementById('datasetFileInput').addEventListener('change', async fun
   this.value = '';
   refreshDatasets();
 });
+
 // ==================== Tab 3: 训练中心 ====================
 let lossChart = null, accChart = null;
 let pollTimer = null;
+let pendingModel = null;
 
 async function refreshTrainDatasetList() {
   const res = await fetch('/api/datasets');
@@ -261,9 +290,13 @@ async function refreshTrainDatasetList() {
   const sel = document.getElementById('trainDataset');
   sel.innerHTML = (data.datasets || []).map(c => `<option value="${c.name}">${c.name} (${c.count}张)</option>`).join('');
 }
+
 document.getElementById('btnStartTrain').addEventListener('click', async () => {
   const ds = document.getElementById('trainDataset').value;
   if (!ds) { alert('请选择数据集'); return; }
+
+  document.getElementById('trainPending').classList.add('hidden');
+  pendingModel = null;
 
   const form = new FormData();
   form.append('dataset_name', ds);
@@ -275,9 +308,7 @@ document.getElementById('btnStartTrain').addEventListener('click', async () => {
   const res = await fetch('/api/train/start', { method: 'POST', body: form });
   const data = await res.json();
 
-  if (data.status === 'error') {
-    alert(data.message); return;
-  }
+  if (data.status === 'error') { alert(data.message); return; }
 
   document.getElementById('batchProgressBar').style.display = 'block';
   document.getElementById('batchProgressLabel').style.display = 'block';
@@ -336,13 +367,11 @@ function startPolling() {
       document.getElementById('trainStatus').textContent = '— ' + s.message;
       document.getElementById('trainMessage').textContent = s.message;
 
-      // Epoch 进度
       if (s.total_epochs > 0) {
         const pct = (s.epoch / s.total_epochs * 100).toFixed(0);
         document.getElementById('progressFill').style.width = pct + '%';
       }
 
-      // Batch 进度
       if (s.total_batches > 0) {
         const bpct = (s.batch / s.total_batches * 100).toFixed(0);
         document.getElementById('batchProgressFill').style.width = bpct + '%';
@@ -350,7 +379,6 @@ function startPolling() {
           `Batch ${s.batch}/${s.total_batches}  (Epoch ${s.epoch}/${s.total_epochs})`;
       }
 
-      // Update charts
       if (s.history && s.history.length) {
         const epochs = s.history.map(h => h.epoch);
         lossChart.data.labels = epochs;
@@ -369,10 +397,169 @@ function startPolling() {
         pollTimer = null;
         document.getElementById('progressFill').style.width = '100%';
         document.getElementById('batchProgressFill').style.width = '100%';
+        if (s.pending_model) showPending(s.pending_model);
       }
     } catch (e) {
       clearInterval(pollTimer);
       pollTimer = null;
     }
   }, 1000);
+}
+
+function showPending(p) {
+  pendingModel = p;
+  document.getElementById('trainPending').classList.remove('hidden');
+  document.getElementById('pendingInfo').textContent =
+    `数据集 ${p.dataset} · ${p.num_classes} 类 · 最佳验证准确率 ${(p.val_acc*100).toFixed(2)}% · ${p.size_mb} MB`;
+}
+
+document.getElementById('btnKeepModel').addEventListener('click', async () => {
+  if (!pendingModel) return;
+  const name = prompt('为模型命名（仅字母/数字/下划线/中文，不含扩展名）：', pendingModel.dataset || 'my_model');
+  if (!name) return;
+  const form = new FormData();
+  form.append('name', name);
+  const res = await fetch('/api/models/save', { method: 'POST', body: form });
+  const data = await res.json();
+  if (data.status === 'error') { alert(data.message); return; }
+  document.getElementById('trainPending').classList.add('hidden');
+  pendingModel = null;
+  alert(`✓ 模型已保存为 ${name}`);
+  refreshCustomModels();
+  refreshModels();
+});
+
+document.getElementById('btnDeleteModel').addEventListener('click', async () => {
+  if (!pendingModel) return;
+  if (!confirm('确定删除当前训练模型吗？')) return;
+  await fetch('/api/models/discard', { method: 'POST' });
+  document.getElementById('trainPending').classList.add('hidden');
+  pendingModel = null;
+});
+
+document.getElementById('btnTestModel').addEventListener('click', () => {
+  if (!pendingModel) return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector('[data-tab="models"]').classList.add('active');
+  document.getElementById('tab-models').classList.add('active');
+  refreshModels().then(() => refreshEvalOptions().then(() => {
+    document.getElementById('evalModel').value = '_last_train';
+    if (pendingModel.dataset) {
+      const dsSel = document.getElementById('evalDataset');
+      if ([...dsSel.options].some(o => o.value === pendingModel.dataset)) {
+        dsSel.value = pendingModel.dataset;
+      }
+    }
+    document.getElementById('tab-models').scrollIntoView({ behavior: 'smooth' });
+  }));
+});
+
+// ==================== Tab 4: 模型管理 ====================
+async function refreshModels() {
+  const res = await fetch('/api/models');
+  const data = await res.json();
+  const el = document.getElementById('modelList');
+  if (!data.models.length) { el.innerHTML = '<p style="color:#666">暂无模型</p>'; return; }
+
+  el.innerHTML = data.models.map(m => {
+    const badge = m.builtin
+      ? '<span class="badge badge-builtin">内置</span>'
+      : (m.pending ? '<span class="badge badge-warn">待处理</span>' : '<span class="badge badge-ok">微调</span>');
+    const acc = (m.val_acc != null) ? (m.val_acc * 100).toFixed(2) + '%' : '—';
+    const del = m.builtin ? '' : `<button class="btn-danger btn-sm" onclick="deleteModel('${escapeHtml(m.key)}')">删除</button>`;
+    return `<div class="model-item">
+      <div class="model-head">
+        <strong>${escapeHtml(m.name)}</strong>
+        <code>${escapeHtml(m.key)}</code> ${badge}
+      </div>
+      <div class="model-meta">
+        类别 ${m.num_classes} · 大小 ${m.size_mb} MB · 验证准确率 ${acc}
+        ${m.created ? ' · ' + escapeHtml(m.created) : ''}
+      </div>
+      <div class="model-actions">${del}</div>
+    </div>`;
+  }).join('');
+}
+
+window.deleteModel = async function(key) {
+  if (!confirm(`确定删除模型 ${key}?`)) return;
+  await fetch('/api/models/' + encodeURIComponent(key), { method: 'DELETE' });
+  refreshModels();
+  refreshEvalOptions();
+  refreshCustomModels();
+};
+
+async function refreshEvalOptions() {
+  const [mr, dr] = await Promise.all([fetch('/api/models'), fetch('/api/datasets')]);
+  const mdata = await mr.json();
+  const ddata = await dr.json();
+  const msel = document.getElementById('evalModel');
+  msel.innerHTML = mdata.models.map(m => `<option value="${escapeHtml(m.key)}">${escapeHtml(m.name)} (${m.num_classes}类)</option>`).join('');
+  const dsel = document.getElementById('evalDataset');
+  dsel.innerHTML = (ddata.datasets || []).map(d => `<option value="${escapeHtml(d.name)}">${escapeHtml(d.name)} (${d.count}张)</option>`).join('');
+}
+
+document.getElementById('btnEval').addEventListener('click', async () => {
+  const m = document.getElementById('evalModel').value;
+  const d = document.getElementById('evalDataset').value;
+  const b = document.getElementById('evalBatch').value || '32';
+  if (!m) { alert('请选择模型'); return; }
+  if (!d) { alert('请选择数据集'); return; }
+
+  document.getElementById('evalProgress').classList.remove('hidden');
+  document.getElementById('evalResult').innerHTML = '';
+
+  const form = new FormData();
+  form.append('model_key', m);
+  form.append('dataset_name', d);
+  form.append('batch_size', b);
+
+  try {
+    const res = await fetch('/api/models/evaluate', { method: 'POST', body: form });
+    const data = await res.json();
+    renderEvalResult(data);
+  } catch (e) {
+    document.getElementById('evalResult').innerHTML = '<p style="color:#e74c3c">评分失败: ' + escapeHtml(e.message) + '</p>';
+  }
+  document.getElementById('evalProgress').classList.add('hidden');
+});
+
+function renderEvalResult(d) {
+  const box = document.getElementById('evalResult');
+  if (d.status === 'error') {
+    box.innerHTML = '<p style="color:#e74c3c">评分失败: ' + escapeHtml(d.message) + '</p>';
+    return;
+  }
+
+  const metrics = `
+    <div class="eval-metrics">
+      <div class="metric"><b>Accuracy</b><span>${(d.accuracy*100).toFixed(2)}%</span></div>
+      <div class="metric"><b>Macro F1</b><span>${d.macro_f1.toFixed(4)}</span></div>
+      <div class="metric"><b>Weighted F1</b><span>${d.weighted_f1.toFixed(4)}</span></div>
+      <div class="metric"><b>Macro P/R</b><span>${d.macro_precision.toFixed(4)} / ${d.macro_recall.toFixed(4)}</span></div>
+      <div class="metric"><b>Weighted P/R</b><span>${d.weighted_precision.toFixed(4)} / ${d.weighted_recall.toFixed(4)}</span></div>
+    </div>`;
+
+  const perClassRows = d.per_class.map(p =>
+    `<tr><td>${escapeHtml(p.class)}</td><td>${p.support}</td><td>${p.precision}</td><td>${p.recall}</td><td>${p.f1}</td></tr>`
+  ).join('');
+
+  const header = '<th>实际\\预测</th>' + d.classes.map(c => `<th>${escapeHtml(c)}</th>`).join('');
+  const cmRows = d.confusion_matrix.map((row, i) =>
+    `<tr><th>${escapeHtml(d.classes[i])}</th>${row.map(v => `<td>${v}</td>`).join('')}</tr>`
+  ).join('');
+
+  box.innerHTML = `
+    ${metrics}
+    <h3 style="margin:18px 0 8px">各类别指标</h3>
+    <div class="table-wrap"><table>
+      <tr><th>类别</th><th>样本数</th><th>Precision</th><th>Recall</th><th>F1</th></tr>
+      ${perClassRows}
+    </table></div>
+    <h3 style="margin:18px 0 8px">混淆矩阵</h3>
+    <div class="table-wrap"><table>
+      <tr>${header}</tr>
+      ${cmRows}
+    </table></div>`;
 }

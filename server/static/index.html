@@ -11,19 +11,31 @@
 
 <header>
   <h1>🔬 ViT 图像识别中台</h1>
-  <p class="subtitle">Vision Transformer · RTX 5060 · fp16</p>
+  <p class="subtitle">Vision Transformer · RTX 5060 · fp16 · 多模型切换</p>
 </header>
 
 <nav>
   <button class="tab-btn active" data-tab="predict">🖼️ 图片识别</button>
   <button class="tab-btn" data-tab="dataset">📦 数据集</button>
   <button class="tab-btn" data-tab="train">🏋️ 训练中心</button>
+  <button class="tab-btn" data-tab="models">🧠 模型管理</button>
 </nav>
 
 <!-- ==================== Tab 1: 图片识别 ==================== -->
 <section id="tab-predict" class="tab-content active">
   <div class="card">
     <h2>上传图片</h2>
+    <div class="row">
+      <label>识别模型
+        <select id="modelMode" style="margin-left:4px;padding:6px">
+          <option value="imagenet">通用识别（ImageNet-1K）</option>
+          <option value="custom">自定义识别（微调模型）</option>
+        </select>
+      </label>
+      <label id="customModelWrap" class="hidden">微调模型
+        <select id="customModelSelect" style="margin-left:4px;padding:6px;min-width:160px"></select>
+      </label>
+    </div>
     <div class="upload-zone" id="uploadZone">
       <p>📁 拖拽图片到此处 或 点击选择</p>
       <input type="file" id="fileInput" accept="image/*" hidden>
@@ -35,7 +47,6 @@
       <label>Top-K <input type="number" id="topK" value="5" min="1" max="20" style="width:60px"></label>
       <button id="btnPredict" class="btn-primary" disabled>🔍 识别</button>
     </div>
-    <!-- 进度条 -->
     <div id="predictProgress" class="progress-bar hidden">
       <div id="predictProgressFill" class="progress-fill-indeterminate"></div>
     </div>
@@ -74,6 +85,7 @@
     <div id="imageGrid" class="image-grid">请先选择数据集和类别</div>
   </div>
 </section>
+
 <!-- ==================== Tab 3: 训练中心 ==================== -->
 <section id="tab-train" class="tab-content">
   <div class="card">
@@ -106,6 +118,40 @@
       <div class="chart-box"><canvas id="lossChart"></canvas></div>
       <div class="chart-box"><canvas id="accChart"></canvas></div>
     </div>
+  </div>
+
+  <div id="trainPending" class="card hidden">
+    <h2>✅ 训练完成，请选择处理方式</h2>
+    <p id="pendingInfo" style="margin-bottom:12px;color:#aaa"></p>
+    <div class="row">
+      <button id="btnKeepModel" class="btn-primary">💾 保留并命名</button>
+      <button id="btnDeleteModel" class="btn-danger">🗑️ 删除模型</button>
+      <button id="btnTestModel" class="btn-secondary">🧪 测试评分</button>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== Tab 4: 模型管理 ==================== -->
+<section id="tab-models" class="tab-content">
+  <div class="card">
+    <h2>模型列表</h2>
+    <div id="modelList">加载中...</div>
+  </div>
+
+  <div class="card">
+    <h2>模型评分</h2>
+    <div class="form-grid">
+      <label>模型 <select id="evalModel"></select></label>
+      <label>数据集 <select id="evalDataset"></select></label>
+      <label>Batch <input type="number" id="evalBatch" value="32" min="1"></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnEval" class="btn-primary">🧪 开始评分</button>
+    </div>
+    <div id="evalProgress" class="progress-bar hidden">
+      <div id="evalProgressFill"></div>
+    </div>
+    <div id="evalResult"></div>
   </div>
 </section>
 

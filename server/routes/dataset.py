@@ -1,4 +1,4 @@
-﻿# server/routes/dataset.py - 数据集管理 API
+# server/routes/dataset.py - 数据集管理 API
 
 import sys
 from pathlib import Path
@@ -28,7 +28,7 @@ def _images_in(directory: Path):
 
 @router.get("")
 async def list_datasets():
-    """列出所有数据集（两级：数据集 -> 类别），兼容根目录直接放图片的旧结构。"""
+    """列出所有数据集（两级：数据集 -> 类别），不返回图片明细以减小响应。"""
     datasets = []
     if not DATASET_ROOT.exists():
         return {"datasets": datasets}
@@ -37,18 +37,16 @@ async def list_datasets():
         if not d.is_dir():
             continue
 
-        root_images = _images_in(d)
         classes = []
         for c in sorted(d.iterdir()):
             if not c.is_dir():
                 continue
-            class_images = _images_in(c)
             classes.append({
                 "name": c.name,
-                "count": len(class_images),
-                "images": class_images,
+                "count": len(_images_in(c)),
             })
 
+        root_images = _images_in(d)
         total = len(root_images) + sum(c["count"] for c in classes)
         datasets.append({
             "name": d.name,
@@ -60,8 +58,15 @@ async def list_datasets():
     return {"datasets": datasets}
 
 
+@router.get("/images")
+async def list_images(dataset: str, category: str = ""):
+    """按数据集和类别获取图片文件名列表。category 为空表示数据集根目录图片。"""
+    base = DATASET_ROOT / dataset
+    target = base / category if category else base
+    return {"images": _images_in(target)}
+
+
 def _category_dir(dataset: str, category: str) -> Path:
-    """解析类别目录。dataset 为空时兼容旧的一级结构。"""
     if dataset:
         return DATASET_ROOT / dataset / category
     return DATASET_ROOT / category
@@ -73,7 +78,6 @@ async def upload_image(
     category: str = Form(...),
     dataset: str = Form(""),
 ):
-    """上传图片到指定数据集下的类别。"""
     cls_dir = _category_dir(dataset, category)
     cls_dir.mkdir(parents=True, exist_ok=True)
 
@@ -96,7 +100,6 @@ async def create_category(
     category: str = Form(...),
     dataset: str = Form(""),
 ):
-    """创建新类别文件夹。"""
     cls_dir = _category_dir(dataset, category)
     cls_dir.mkdir(parents=True, exist_ok=True)
     return {"status": "ok", "dataset": dataset, "category": category}
@@ -107,7 +110,6 @@ async def delete_category(
     category: str,
     dataset: str = "",
 ):
-    """删除类别及其下所有图片。"""
     cls_dir = _category_dir(dataset, category)
     if cls_dir.exists():
         shutil.rmtree(cls_dir)
@@ -121,7 +123,6 @@ async def delete_image(
     filename: str = Form(...),
     dataset: str = Form(""),
 ):
-    """删除单张图片。"""
     img_path = _category_dir(dataset, category) / filename
     if img_path.exists():
         img_path.unlink()

@@ -15,7 +15,7 @@
 计划一：CLI 图像识别工具          计划二：Web 中台
     │                                │
     ├─ ViT-B/16 模型加载              ├─ FastAPI 后端
-    ├─ CLI 推理入口                   ├─ 三 Tab 前端（识别/数据集/训练）
+    ├─ CLI 推理入口                   ├─ 四 Tab 前端（识别/数据集/训练/模型管理）
     ├─ CLI 训练脚本                   ├─ 后台线程训练
     ├─ ImageNet-1K 标签               ├─ 实时进度 + Chart.js
     ├─ CPU → GPU 切换                ├─ 中英双语展示
@@ -99,6 +99,12 @@ vit_src/
 | GET | `/api/train/status` | 实时进度 (epoch/batch/loss/acc) |
 | GET | `/api/train/history` | 训练历史 |
 | POST | `/api/train/stop` | 停止训练 |
+| GET | `/api/models` | 列出所有模型（内置 + 微调） |
+| GET | `/api/models/finetuned` | 列出微调模型 key |
+| POST | `/api/models/save` | 命名保存训练模型 |
+| DELETE | `/api/models/{name}` | 删除微调模型 |
+| POST | `/api/models/discard` | 丢弃待处理训练模型 |
+| POST | `/api/models/evaluate` | 模型评分 |
 
 ### 前端三模块
 
@@ -107,6 +113,7 @@ vit_src/
 | 🖼️ 图片识别 | 拖拽上传 → 分类 → 中英双语 + 置信度条形图 + 识别进度动画 | Chart.js 横向 bar |
 | 📦 数据集 | 两级浏览（数据集→类别）/ 创建类别 / 批量上传 / 图片网格查看 / 删除 | 图片载入 `/datasets/{数据集}/{类别}/{文件名}` |
 | 🏋️ 训练中心 | 选数据集 → 填参数 → 开始 → Epoch+Batch 双进度条 + 实时 Loss/Acc 折线图 | `setInterval` 1秒轮询 + Chart.js line |
+| 🧠 模型管理 | 模型列表 / 删除 / 评分 / 训练后三选一处理 | `/api/models` + 混淆矩阵表格 |
 
 ### 训练后台机制
 
@@ -176,6 +183,8 @@ train.py              server/routes/*
 | 21 | 合并 | 数据集页升级为两级结构（数据集→类别） |
 | 22 | 合并 | 修复 Windows 下 ImageFolder 图片重复统计 |
 | 23 | 合并 | 接入 EuroSAT 地形数据集（10 类 27,000 张） |
+| 24 | 合并 | 多模型缓存与识别模型切换 |
+| 25 | 合并 | 训练完成后三选一 + 模型管理 + 评分页 |
 
 ---
 
@@ -224,6 +233,31 @@ Pasture, PermanentCrop, Residential, River, SeaLake
 - 下载脚本: `_dl_eurosat.py`（从 DFKI 官方源下载 EuroSAT.zip）
 - 官方来源: https://madm.dfki.de/files/sentinel/EuroSAT.zip
 - 训练建议: `epochs=10`、`batch_size=32`、`lr=1e-4`、冻结 Backbone
+
+---
+## 模型切换与训练后处理
+
+- **识别模型选择**：识别页提供两级下拉。
+  - 通用识别：ImageNet-1K 1000 类模型，使用中英双语标签。
+  - 自定义识别：选择 `checkpoints/` 下的微调模型，使用该模型的类别标签。
+- **多模型缓存**：`model.py` 按 key 缓存多个模型，首次加载后复用。
+- **训练完成后三选一**：
+  1. 保留：为模型命名，存入 `checkpoints/`。
+  2. 删除：不保存当前训练结果。
+  3. 测试评分：对刚训练模型在验证集上评分，再决定保留或删除。
+
+## 评分指标
+
+采用多分类标准指标：
+
+| 指标 | 说明 |
+|------|------|
+| Accuracy | 总体正确率 |
+| Macro Precision / Recall / F1 | 各类别指标取平均，类别均衡时参考 |
+| Weighted Precision / Recall / F1 | 按样本数加权，类别不平衡时更可靠 |
+| Confusion Matrix | 实际类别 × 预测类别，定位混淆来源 |
+
+推荐主看 **Macro F1**（类别均衡）和 **Weighted F1**（类别不平衡），再结合混淆矩阵排查具体类别。
 
 ---
 ## 关联项目：虚拟因子

@@ -1,4 +1,4 @@
-﻿* { margin:0; padding:0; box-sizing:border-box; }
+* { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%); color: #e0e0e0; min-height: 100vh; }
 
 /* Header */
@@ -98,3 +98,48 @@ input[type="text"]:focus, input[type="number"]:focus { outline: none; border-col
   width: 0%;
   transition: width .3s;
 }
+
+/* 模型管理与评分 */
+.model-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+}
+.model-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.model-head code { color: #7c8cf8; font-size: 13px; }
+.model-meta { font-size: 13px; color: #999; }
+.model-actions { display: flex; gap: 8px; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid #555; color: #bbb; }
+.badge-builtin { border-color: #7c8cf8; color: #7c8cf8; }
+.badge-ok { border-color: #4caf50; color: #4caf50; }
+.badge-warn { border-color: #f39c12; color: #f39c12; }
+.btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; border: none; cursor: pointer; }
+
+.eval-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.metric {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.metric b { color: #999; font-size: 12px; font-weight: normal; }
+.metric span { color: #7c8cf8; font-size: 18px; }
+
+.table-wrap { overflow-x: auto; }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table-wrap th, .table-wrap td { border: 1px solid rgba(255,255,255,0.08); padding: 6px 8px; text-align: center; }
+.table-wrap th { background: rgba(255,255,255,0.04); color: #ccc; }
+.table-wrap td { color: #aaa; }
