@@ -143,3 +143,11 @@ input[type="text"]:focus, input[type="number"]:focus { outline: none; border-col
 .table-wrap th, .table-wrap td { border: 1px solid rgba(255,255,255,0.08); padding: 6px 8px; text-align: center; }
 .table-wrap th { background: rgba(255,255,255,0.04); color: #ccc; }
 .table-wrap td { color: #aaa; }
+
+#evalProgressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c8cf8, #4caf50);
+  border-radius: 4px;
+  width: 0%;
+  transition: width .3s;
+}

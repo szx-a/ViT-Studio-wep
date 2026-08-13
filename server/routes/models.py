@@ -207,7 +207,7 @@ async def discard_model():
 # 评分
 # ---------------------------------------------------------------------------
 @router.post("/evaluate")
-async def evaluate_model(
+def evaluate_model(
     model_key: str = Form(...),
     dataset_name: str = Form(...),
     batch_size: int = Form(32),
@@ -226,10 +226,16 @@ async def evaluate_model(
         if not data_dir.exists():
             raise FileNotFoundError(f"数据集不存在: {data_dir}")
 
+        with _eval_lock:
+            _eval_state["progress"] = 0.02
+            _eval_state["message"] = "加载数据集..."
         transform = get_transform()
         full_dataset = ImageFolderDataset(data_dir, transform=transform)
         classes = full_dataset.classes
 
+        with _eval_lock:
+            _eval_state["progress"] = 0.08
+            _eval_state["message"] = "加载模型..."
         model, model_classes = get_model_for_key(model_key)
         if len(model_classes) != len(classes):
             raise ValueError(
@@ -268,7 +274,7 @@ async def evaluate_model(
                 for t, p in zip(labels.cpu().tolist(), preds.cpu().tolist()):
                     confusion[t, p] += 1
                 with _eval_lock:
-                    _eval_state["progress"] = round(bi / total_batches, 4)
+                    _eval_state["progress"] = round(0.1 + 0.9 * bi / total_batches, 4)
                     _eval_state["message"] = f"评分中 {bi}/{total_batches} 批"
 
         accuracy = correct / total if total else 0.0

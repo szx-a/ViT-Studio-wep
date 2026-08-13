@@ -395,15 +395,35 @@ function startPolling() {
       if (!s.running) {
         clearInterval(pollTimer);
         pollTimer = null;
-        document.getElementById('progressFill').style.width = '100%';
-        document.getElementById('batchProgressFill').style.width = '100%';
-        if (s.pending_model) showPending(s.pending_model);
+        if (s.pending_model) {
+          document.getElementById('progressFill').style.width = '100%';
+          document.getElementById('batchProgressFill').style.width = '100%';
+          showPending(s.pending_model);
+        } else {
+          document.getElementById('progressFill').style.width = '0%';
+          document.getElementById('batchProgressFill').style.width = '0%';
+          document.getElementById('batchProgressBar').style.display = 'none';
+          document.getElementById('batchProgressLabel').style.display = 'none';
+          document.getElementById('trainPending').classList.add('hidden');
+          pendingModel = null;
+        }
       }
     } catch (e) {
       clearInterval(pollTimer);
       pollTimer = null;
     }
   }, 1000);
+}
+
+function resetTrainUI() {
+  document.getElementById('trainPending').classList.add('hidden');
+  pendingModel = null;
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('batchProgressFill').style.width = '0%';
+  document.getElementById('batchProgressBar').style.display = 'none';
+  document.getElementById('batchProgressLabel').style.display = 'none';
+  document.getElementById('trainStatus').textContent = '— 空闲';
+  document.getElementById('trainMessage').textContent = '等待开始训练...';
 }
 
 function showPending(p) {
@@ -413,7 +433,7 @@ function showPending(p) {
     `数据集 ${p.dataset} · ${p.num_classes} 类 · 最佳验证准确率 ${(p.val_acc*100).toFixed(2)}% · ${p.size_mb} MB`;
 }
 
-document.getElementById('btnKeepModel').addEventListener('click', async () => {
+async function keepPendingModel() {
   if (!pendingModel) return;
   const name = prompt('为模型命名（仅字母/数字/下划线/中文，不含扩展名）：', pendingModel.dataset || 'my_model');
   if (!name) return;
@@ -422,20 +442,27 @@ document.getElementById('btnKeepModel').addEventListener('click', async () => {
   const res = await fetch('/api/models/save', { method: 'POST', body: form });
   const data = await res.json();
   if (data.status === 'error') { alert(data.message); return; }
-  document.getElementById('trainPending').classList.add('hidden');
-  pendingModel = null;
+  resetTrainUI();
   alert(`✓ 模型已保存为 ${name}`);
   refreshCustomModels();
   refreshModels();
-});
+  refreshEvalOptions();
+  document.getElementById('evalResult').innerHTML = '';
+}
 
-document.getElementById('btnDeleteModel').addEventListener('click', async () => {
+async function discardPendingModel() {
   if (!pendingModel) return;
   if (!confirm('确定删除当前训练模型吗？')) return;
   await fetch('/api/models/discard', { method: 'POST' });
-  document.getElementById('trainPending').classList.add('hidden');
-  pendingModel = null;
-});
+  resetTrainUI();
+  refreshModels();
+  refreshEvalOptions();
+  refreshCustomModels();
+  document.getElementById('evalResult').innerHTML = '';
+}
+
+document.getElementById('btnKeepModel').addEventListener('click', keepPendingModel);
+document.getElementById('btnDeleteModel').addEventListener('click', discardPendingModel);
 
 document.getElementById('btnTestModel').addEventListener('click', () => {
   if (!pendingModel) return;
@@ -485,6 +512,7 @@ async function refreshModels() {
 window.deleteModel = async function(key) {
   if (!confirm(`确定删除模型 ${key}?`)) return;
   await fetch('/api/models/' + encodeURIComponent(key), { method: 'DELETE' });
+  if (key === '_last_train') resetTrainUI();
   refreshModels();
   refreshEvalOptions();
   refreshCustomModels();
@@ -507,8 +535,21 @@ document.getElementById('btnEval').addEventListener('click', async () => {
   if (!m) { alert('请选择模型'); return; }
   if (!d) { alert('请选择数据集'); return; }
 
-  document.getElementById('evalProgress').classList.remove('hidden');
+  const progressBar = document.getElementById('evalProgress');
+  const progressFill = document.getElementById('evalProgressFill');
+  progressBar.classList.remove('hidden');
+  progressFill.style.width = '0%';
   document.getElementById('evalResult').innerHTML = '';
+
+  const poll = setInterval(async () => {
+    try {
+      const sr = await fetch('/api/models/evaluate/status');
+      const st = await sr.json();
+      const pct = Math.round((st.progress || 0) * 100);
+      progressFill.style.width = pct + '%';
+      document.getElementById('evalProgressText').textContent = pct + '%';
+    } catch (e) {}
+  }, 500);
 
   const form = new FormData();
   form.append('model_key', m);
@@ -518,14 +559,17 @@ document.getElementById('btnEval').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/models/evaluate', { method: 'POST', body: form });
     const data = await res.json();
-    renderEvalResult(data);
+    renderEvalResult(data, m);
   } catch (e) {
     document.getElementById('evalResult').innerHTML = '<p style="color:#e74c3c">评分失败: ' + escapeHtml(e.message) + '</p>';
   }
-  document.getElementById('evalProgress').classList.add('hidden');
+
+  clearInterval(poll);
+  progressFill.style.width = '100%';
+  setTimeout(() => progressBar.classList.add('hidden'), 800);
 });
 
-function renderEvalResult(d) {
+function renderEvalResult(d, modelKey) {
   const box = document.getElementById('evalResult');
   if (d.status === 'error') {
     box.innerHTML = '<p style="color:#e74c3c">评分失败: ' + escapeHtml(d.message) + '</p>';
@@ -562,4 +606,12 @@ function renderEvalResult(d) {
       <tr>${header}</tr>
       ${cmRows}
     </table></div>`;
+
+  if (modelKey === '_last_train' && pendingModel) {
+    box.innerHTML += `
+      <div class="row" style="margin-top:16px">
+        <button class="btn-primary" onclick="keepPendingModel()">💾 保留并命名</button>
+        <button class="btn-danger" onclick="discardPendingModel()">🗑️ 删除模型</button>
+      </div>`;
+  }
 }

@@ -146,6 +146,10 @@ def _run_training(data_dir: str, epochs: int, batch_size: int,
                 t_correct += (preds == labels).sum().item()
                 t_total += labels.size(0)
 
+            with _lock:
+                if training_state["stop_requested"]:
+                    break
+
             train_loss = t_loss / t_total if t_total else 0
             train_acc = t_correct / t_total if t_total else 0
 
